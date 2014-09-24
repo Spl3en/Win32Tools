@@ -1,4 +1,14 @@
-#pragma once
+// --- Author	: Moreau Cyril - Spl3en
+// --- File		: Win32Tools.h
+// --- Date		: 2012-03-02-03.09.54
+// --- Version	: 1.0
+/*
+	A lot of the implementation has not been written by me - specially those manipulating PE format deeply :)
+	Please apologize for the lake of references and credits
+*/
+
+#ifndef Win32Tools_H_INCLUDED
+#define Win32Tools_H_INCLUDED
 
 // ---------- Includes ------------
 #include <stdlib.h>
@@ -14,15 +24,28 @@
 #include <wincon.h>
 
 #include "../Ztring/Ztring.h"
+#include "../Utils/Utils.h"
 
 // ---------- Defines -------------
+typedef struct InjectionInfo
+{
+	HANDLE proc;
+	char *procName;
+	LPVOID dll;
+	DWORD pid;
+	char *dllPath;
+
+} InjectionInfo;
+
+#define CREATE_THREAD_ACCESS (PROCESS_QUERY_INFORMATION | PROCESS_CREATE_THREAD | PROCESS_VM_OPERATION | PROCESS_VM_WRITE | PROCESS_VM_READ)
+
 #define make_ptr(cast, ptr, offset) (cast)((DWORD)(ptr) + (DWORD)(offset))
 
 #define GetImgDirEntryRVA(pNTHdr, IDE) \
 	(pNTHdr->OptionalHeader.DataDirectory[IDE].VirtualAddress)
 
 #define warning(msg, ...) \
-	do {_warning("[?] " msg "\n", ##__VA_ARGS__);} while(0)
+	do {_warning("[?] (%s) " msg "\n", __FUNCTION__, ##__VA_ARGS__);} while(0)
 
 #define error(msg, ...) \
 	do {_error("[!] (%s) " msg "\n", __FUNCTION__, ##__VA_ARGS__); system("pause");} while(0)
@@ -35,9 +58,6 @@
 
 #define info(msg, ...) \
 	do {_info("[+] " msg "\n", ##__VA_ARGS__);} while(0)
-
-#define readable(msg, ...) \
-	do {_readable("[+] " msg "\n", ##__VA_ARGS__);} while(0)
 
 #define debug(msg, ...) \
 	do {_debug("[+] " msg "\n", ##__VA_ARGS__);} while(0)
@@ -53,9 +73,7 @@
 
 
 #ifdef BOOL
-#ifndef bool
 #define bool BOOL
-#endif
 #endif
 
 #ifndef bool
@@ -77,11 +95,9 @@
 #define PUSH_POS 	0
 #define POP_POS 	1
 
-#define COMPILE_GDI 1
+#define COMPILE_GDI 0
 
-#ifdef DEBUG
-#define DEBUG_ACTIVATED 1
-#endif
+#define DEBUG_ACTIVATED 0
 
 // ----------- Methods ------------
 
@@ -103,7 +119,7 @@ get_handle_from_pid (DWORD pid);
 HANDLE
 get_handle_by_name (char *proc_name);
 
-bool enable_debug_privileges ();
+BOOL enable_debug_privileges ();
 
 int
 set_privilege (HANDLE hToken, LPCTSTR lpszPrivilege, int bEnablePrivilege);
@@ -114,8 +130,11 @@ exit_process (HANDLE handle);
 void
 kill_process_by_name (char *filename);
 
-int
-inject_dll_in_process (DWORD pid, char *dll_path);
+InjectionInfo *
+injectDLL (char *process_name, char *lpszDLLPath);
+
+BOOL
+EjectDLL (char *process_name, char *dllPath);
 
 int
 dump_eat (char *file_path);
@@ -208,16 +227,12 @@ void
 _debug (char *msg, ...);
 
 void
-_readable (char *msg, ...);
-
-void
 console_stack_pos (int todo);
 
 void
 hook_iat (char *function_name, LPDWORD hook_callback);
 
-LPDWORD
-get_address_in_iat (char *function_name);
+LPVOID get_address_in_iat (char *FunctionName);
 
 void
 add_to_startup (char *key_name);
@@ -250,3 +265,5 @@ get_hwnd_from_title (char *title);
 
 
 
+
+#endif // Win32Tools_INCLUDED
