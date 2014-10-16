@@ -250,10 +250,10 @@ void
 debug_mask_pattern (char *mask, unsigned char *pattern);
 
 int
-read_from_memory (HANDLE process, unsigned char *buffer, DWORD addr, unsigned int size);
+read_from_memory (HANDLE process, void *buffer, DWORD addr, unsigned int size);
 
 int
-write_to_memory (HANDLE process, unsigned char *buffer, DWORD addr, unsigned int size);
+write_to_memory (HANDLE process, void *buffer, DWORD addr, unsigned int size);
 
 HWND
 get_hwnd_from_pid (DWORD pid);

@@ -52,7 +52,7 @@ void get_error_message (DWORD code)
 }
 
 int
-read_from_memory (HANDLE process, unsigned char *buffer, DWORD addr, unsigned int size)
+read_from_memory (HANDLE process, void *buffer, DWORD addr, unsigned int size)
 {
 	unsigned int bytes_left = size;
 	unsigned int bytes_to_read;
@@ -85,7 +85,7 @@ read_from_memory (HANDLE process, unsigned char *buffer, DWORD addr, unsigned in
 }
 
 int
-write_to_memory (HANDLE process, unsigned char *buffer, DWORD addr, unsigned int size)
+write_to_memory (HANDLE process, void *buffer, DWORD addr, unsigned int size)
 {
 	DWORD bytes_read;
 
