@@ -752,7 +752,6 @@ _info (char *msg, ...)
 void
 _debug (char *msg, ...)
 {
-	#if DEBUG_ACTIVATED == 1
 	va_list args;
 	console_set_col(0x03);
 
@@ -761,7 +760,6 @@ _debug (char *msg, ...)
 	va_end (args);
 
 	console_set_col(0x07);
-	#endif
 }
 
 LPVOID

@@ -37,6 +37,8 @@ typedef struct InjectionInfo
 
 } InjectionInfo;
 
+#define DEBUG_ACTIVATED
+
 #define CREATE_THREAD_ACCESS (PROCESS_QUERY_INFORMATION | PROCESS_CREATE_THREAD | PROCESS_VM_OPERATION | PROCESS_VM_WRITE | PROCESS_VM_READ)
 
 #define make_ptr(cast, ptr, offset) (cast)((DWORD)(ptr) + (DWORD)(offset))
@@ -59,8 +61,12 @@ typedef struct InjectionInfo
 #define info(msg, ...) \
 	do {_info("[+] " msg "\n", ##__VA_ARGS__);} while(0)
 
+#ifdef DEBUG_ACTIVATED
 #define debug(msg, ...) \
 	do {_debug("[+] " msg "\n", ##__VA_ARGS__);} while(0)
+#else
+#define debug(msg, ...) ;
+#endif
 
 #define debugb(msg, ...) \
 	do {_debug("[+] " msg, ##__VA_ARGS__);} while(0)
@@ -96,8 +102,6 @@ typedef struct InjectionInfo
 #define POP_POS 	1
 
 #define COMPILE_GDI 0
-
-#define DEBUG_ACTIVATED 0
 
 // ----------- Methods ------------
 
