@@ -114,7 +114,7 @@ DWORD WINAPI freeDll(void* pMem)
 
 BOOL EjectDLL (char *process_name, char *dllPath)
 {
-	HANDLE  hProcess;
+	HANDLE  hProcess = 0;
     CHAR ChaDLLFilePath [(MAX_PATH + 16)] = { 0 };
     strcpy (ChaDLLFilePath, dllPath);
     HMODULE ModDLLHandle = NULL;
