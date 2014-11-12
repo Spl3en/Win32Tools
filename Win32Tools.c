@@ -20,8 +20,9 @@ get_pid_by_name (char *proc_name)
 
 	while (Process32Next(hSnapshot, &pe32))
 	{
-		if (!strcmp(proc_name, pe32.szExeFile))
+		if (!stricmp(proc_name, pe32.szExeFile))
 		{
+			strcpy(proc_name, pe32.szExeFile);
 			dwPID = pe32.th32ProcessID;
 			break;
 		}
@@ -693,6 +694,15 @@ console_set_size (int w, int h)
 	RECT r;
 	GetWindowRect(console, &r);
 	MoveWindow(console, r.left, r.top, w, h, TRUE);
+}
+
+void
+window_get_position (HWND hWnd, int *x, int *y)
+{
+	RECT r;
+	GetWindowRect(hWnd, &r);
+	*x = r.left;
+	*y = r.top;
 }
 
 void

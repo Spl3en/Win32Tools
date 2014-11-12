@@ -217,6 +217,9 @@ void
 console_set_cursor_visibility (int visible);
 
 void
+window_get_position (HWND hWnd, int *x, int *y);
+
+void
 _error (char *msg, ...);
 
 void
