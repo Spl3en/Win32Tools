@@ -22,6 +22,8 @@
 #include <time.h>
 #include <psapi.h>
 #include <wincon.h>
+#include <subauth.h>
+#include <ntdef.h>
 
 #include "../Ztring/Ztring.h"
 #include "../Utils/Utils.h"
@@ -36,6 +38,210 @@ typedef struct InjectionInfo
 	char *dllPath;
 
 } InjectionInfo;
+
+
+/**
+* MODULE_ENTRY contains basic information about a module
+*/
+typedef struct _MODULE_ENTRY
+{
+	UNICODE_STRING BaseName; // BaseName of the module
+	UNICODE_STRING FullName; // FullName of the module
+	ULONG SizeOfImage; // Size in bytes of the module
+	PVOID BaseAddress; // Base address of the module
+	PVOID EntryPoint; // Entrypoint of the module
+	BOOLEAN IsSystemModule; // TRUE if the module is a system module
+} MODULE_ENTRY, *PMODULE_ENTRY;
+
+/**
+* MODULE_INFORMATION_TABLE contains basic information about all the modules of a given process
+*/
+typedef struct _MODULE_INFORMATION_TABLE
+{
+	ULONG Pid; // PID of the process
+	ULONG ModuleCount; // Modules count for the above pointer
+	PMODULE_ENTRY Modules; // Pointer to 0...* modules
+	PMODULE_ENTRY ImageModule; // Pointer to the current executable module
+	PMODULE_ENTRY NtdllModule; // Pointer to the ntdll module
+} MODULE_INFORMATION_TABLE, *PMODULE_INFORMATION_TABLE;
+
+typedef struct _PEB_LDR_DATA
+{
+	ULONG Length;
+	UCHAR Initialized;
+	PVOID SsHandle;
+	LIST_ENTRY InLoadOrderModuleList;
+	LIST_ENTRY InMemoryOrderModuleList;
+	LIST_ENTRY InInitializationOrderModuleList;
+	PVOID EntryInProgress;
+} PEB_LDR_DATA, *PPEB_LDR_DATA;
+
+typedef struct _RTL_USER_PROCESS_PARAMETERS {
+	UCHAR Reserved1[16];
+	PVOID Reserved2[10];
+	UNICODE_STRING ImagePathName;
+	UNICODE_STRING CommandLine;
+} RTL_USER_PROCESS_PARAMETERS, *PRTL_USER_PROCESS_PARAMETERS;
+
+//
+// Loader Data Table Entry
+//
+typedef struct _LDR_DATA_TABLE_ENTRY
+{
+	LIST_ENTRY InLoadOrderLinks;
+	LIST_ENTRY InMemoryOrderModuleList;
+	LIST_ENTRY InInitializationOrderModuleList;
+	PVOID DllBase;
+	PVOID EntryPoint;
+	ULONG SizeOfImage;
+	UNICODE_STRING FullDllName;
+	UNICODE_STRING BaseDllName;
+	ULONG Flags;
+	USHORT LoadCount;
+	USHORT TlsIndex;
+	union {
+		LIST_ENTRY HashLinks;
+		struct
+		{
+			PVOID SectionPointer;
+			ULONG CheckSum;
+		};
+	};
+	union {
+		ULONG TimeDateStamp;
+		PVOID LoadedImports;
+	};
+	PVOID EntryPointActivationContext;
+	PVOID PatchInformation;
+} LDR_DATA_TABLE_ENTRY, *PLDR_DATA_TABLE_ENTRY;
+
+
+typedef struct _SYSTEM_MODULE_ENTRY
+{
+	ULONG Unused;
+	ULONG Always0;
+	PVOID ModuleBaseAddress;
+	ULONG ModuleSize;
+	ULONG Unknown;
+	ULONG ModuleEntryIndex;
+	USHORT ModuleNameLength;
+	USHORT ModuleNameOffset;
+	CHAR ModuleName [256];
+} SYSTEM_MODULE_ENTRY, * PSYSTEM_MODULE_ENTRY;
+
+typedef struct _SYSTEM_MODULE_INFORMATION
+{
+	ULONG ModulesCount;
+	SYSTEM_MODULE_ENTRY Modules[0];
+} SYSTEM_MODULE_INFORMATION, *PSYSTEM_MODULE_INFORMATION;
+
+typedef struct _RTL_BITMAP
+{
+     ULONG SizeOfBitMap;
+     ULONG * Buffer;
+} RTL_BITMAP, *PRTL_BITMAP;
+
+
+typedef struct _PROCESS_BASIC_INFORMATION {
+	NTSTATUS ExitStatus;
+	PVOID PebBaseAddress;
+	ULONG AffinityMask;
+	ULONG BasePriority;
+	ULONG UniqueProcessId;
+	ULONG InheritedFromUniqueProcessId;
+} PROCESS_BASIC_INFORMATION, *PPROCESS_BASIC_INFORMATION;
+
+
+typedef enum _PROCESSINFOCLASS {
+	ProcessBasicInformation,
+	ProcessQuotaLimits,
+	ProcessIoCounters,
+	ProcessVmCounters,
+	ProcessTimes,
+	ProcessBasePriority,
+	ProcessRaisePriority,
+	ProcessDebugPort,
+	ProcessExceptionPort,
+	ProcessAccessToken,
+	ProcessLdtInformation,
+	ProcessLdtSize,
+	ProcessDefaultHardErrorMode,
+	ProcessIoPortHandlers,          // Note: this is kernel mode only
+	ProcessPooledUsageAndLimits,
+	ProcessWorkingSetWatch,
+	ProcessUserModeIOPL,
+	ProcessEnableAlignmentFaultFixup,
+	ProcessPriorityClass,
+	MaxProcessInfoClass
+} PROCESSINFOCLASS;
+
+NTSTATUS WINAPI NtQueryInformationProcess (
+	HANDLE ProcessHandle,
+	PROCESSINFOCLASS ProcessInformationClass,
+	PVOID ProcessInformation,
+	ULONG ProcessInformationLength,
+	PULONG ReturnLength
+);
+
+#pragma pack(push, 1)
+typedef struct _PEB
+{
+	BOOLEAN InheritedAddressSpace; /* 00 */
+	BOOLEAN ReadImageFileExecOptions; /* 01 */
+	BOOLEAN BeingDebugged; /* 02 */
+	BOOLEAN SpareBool; /* 03 */
+	HANDLE Mutant; /* 04 */
+	HMODULE ImageBaseAddress; /* 08 */
+	PPEB_LDR_DATA LdrData; /* 0c */
+	RTL_USER_PROCESS_PARAMETERS *ProcessParameters; /* 10 */
+	PVOID SubSystemData; /* 14 */
+	HANDLE ProcessHeap; /* 18 */
+	PRTL_CRITICAL_SECTION FastPebLock; /* 1c */
+	PVOID /*PPEBLOCKROUTINE*/ FastPebLockRoutine; /* 20 */
+	PVOID /*PPEBLOCKROUTINE*/ FastPebUnlockRoutine; /* 24 */
+	ULONG EnvironmentUpdateCount; /* 28 */
+	PVOID KernelCallbackTable; /* 2c */
+	PVOID EventLogSection; /* 30 */
+	PVOID EventLog; /* 34 */
+	PVOID /*PPEB_FREE_BLOCK*/ FreeList; /* 38 */
+	ULONG TlsExpansionCounter; /* 3c */
+	PRTL_BITMAP TlsBitmap; /* 40 */
+	ULONG TlsBitmapBits[2]; /* 44 */
+	PVOID ReadOnlySharedMemoryBase; /* 4c */
+	PVOID ReadOnlySharedMemoryHeap; /* 50 */
+	PVOID *ReadOnlyStaticServerData; /* 54 */
+	PVOID AnsiCodePageData; /* 58 */
+	PVOID OemCodePageData; /* 5c */
+	PVOID UnicodeCaseTableData; /* 60 */
+	ULONG NumberOfProcessors; /* 64 */
+	ULONG NtGlobalFlag; /* 68 */
+	BYTE Spare2[4]; /* 6c */
+	LARGE_INTEGER CriticalSectionTimeout; /* 70 */
+	ULONG HeapSegmentReserve; /* 78 */
+	ULONG HeapSegmentCommit; /* 7c */
+	ULONG HeapDeCommitTotalFreeThreshold; /* 80 */
+	ULONG HeapDeCommitFreeBlockThreshold; /* 84 */
+	ULONG NumberOfHeaps; /* 88 */
+	ULONG MaximumNumberOfHeaps; /* 8c */
+	PVOID *ProcessHeaps; /* 90 */
+	PVOID GdiSharedHandleTable; /* 94 */
+	PVOID ProcessStarterHelper; /* 98 */
+	PVOID GdiDCAttributeList; /* 9c */
+	PVOID LoaderLock; /* a0 */
+	ULONG OSMajorVersion; /* a4 */
+	ULONG OSMinorVersion; /* a8 */
+	ULONG OSBuildNumber; /* ac */
+	ULONG OSPlatformId; /* b0 */
+	ULONG ImageSubSystem; /* b4 */
+	ULONG ImageSubSystemMajorVersion; /* b8 */
+	ULONG ImageSubSystemMinorVersion; /* bc */
+	ULONG ImageProcessAffinityMask; /* c0 */
+	ULONG GdiHandleBuffer[34]; /* c4 */
+	ULONG PostProcessInitRoutine; /* 14c */
+	PRTL_BITMAP TlsExpansionBitmap; /* 150 */
+	ULONG TlsExpansionBitmapBits[32]; /* 154 */
+	ULONG SessionId; /* 1d4 */
+} PEB, *PPEB;
 
 #define CREATE_THREAD_ACCESS (PROCESS_QUERY_INFORMATION | PROCESS_CREATE_THREAD | PROCESS_VM_OPERATION | PROCESS_VM_WRITE | PROCESS_VM_READ)
 
@@ -265,6 +471,62 @@ get_hwnd_from_pid (DWORD pid);
 
 HWND
 get_hwnd_from_title (char *title);
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//  This function is part of zer0m0n project. (https://github.com/conix-security/zer0m0n/blob/master/src/driver/module.c)
+//	Description :
+//	Allocate and fill a PMODULE_INFORMATION_TABLE structure depending of the information given in the PEB
+//	It also retrieves information from the system modules and add them to the table
+//	Parameters :
+//	IN ULONG Pid The targeted process ID
+//	IN PPEB pPeb An allocated PEB pointer
+//	Return value :
+//	PMODULE_INFORMATION_TABLE An allocated PMODULE_INFORMATION_TABLE containing the information about the modules
+//	Process :
+//	Read the PEB structure
+//	Count the number of modules loaded
+//	Allocate the module information table with the correct size
+//	Fill the table with each entry of user modules
+//	Add the module information table in the global list
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+PMODULE_INFORMATION_TABLE
+CreateModuleInformation (
+	IN ULONG Pid,
+	IN PPEB pPeb
+);
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//	Description :
+// 		Retrieve the entire PEB structure of the current process
+//
+//	Parameters :
+//	Return value :
+//		PPEB :		A pointer to the PEB structure of the current process, or NULL if error
+//	Process :
+//		Calls QueryProcessInformation with a ProcessBasicInformation class to retrieve a PROCESS_BASIC_INFORMATION pointer
+//		Read the field PebAddress from PROCESS_BASIC_INFORMATION and return it as a PEB pointer.
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////
+PPEB
+GetPebProcess (
+	DWORD Pid
+);
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//  This function is part of zer0m0n project. (https://github.com/conix-security/zer0m0n/blob/master/src/driver/module.c)
+//
+//	Description :
+//   Get the entire module information table from the target process
+//	Parameters :
+//		DWORD TargetPid : The target process ID
+//	Return value :
+//		PMODULE_INFORMATION_TABLE : A pointer to an allocated module information table
+//	Process :
+//		Wrapper around GetPebProcess, reads and store the result into a MODULE_INFORMATION_TABLE structure
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+PMODULE_INFORMATION_TABLE
+QueryModuleInformationProcess (
+	DWORD TargetPid
+);
 
 // --------- Destructors ----------
 

@@ -772,6 +772,232 @@ _debug (char *msg, ...)
 	console_set_col(0x07);
 }
 
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//	Description :
+// 		QueryProcessInformation is a wrapper around ZwQueryInformationProcess.
+// 		Return a pointer to a structure information of the current process, depending of the ProcessInformationClass requested
+//
+//	Parameters :
+//		IN HANDLE Process								The process targeted
+//		IN PROCESSINFOCLASS ProcessInformationClass		The information class requested
+//		IN DWORD ProcessInformationLength				Size of the structure written
+//	Return value :
+//		PVOID :	An information structure pointer retrieved with ZwQueryInformationProcess depending of the class requested
+//	Process :
+//		Request the requested structure size
+//		Allocate the memory for the requested structure
+//		Fill the requested structure
+//		Check the structure size requested with the one returned by ZwQueryInformationProcess
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////
+PVOID
+QueryProcessInformation (
+	IN HANDLE Process,
+	IN PROCESSINFOCLASS ProcessInformationClass,
+	IN DWORD ProcessInformationLength
+) {
+	PVOID pProcessInformation = NULL;
+    ULONG ReturnLength = 0;
+
+	// Allocate the memory for the requested structure
+	if ((pProcessInformation = malloc (ProcessInformationLength)) == NULL) {
+		error ("ExAllocatePoolWithTag failed");
+		return NULL;
+	}
+
+	// Fill the requested structure
+	if (!NT_SUCCESS (NtQueryInformationProcess (Process, ProcessInformationClass, pProcessInformation, ProcessInformationLength, &ReturnLength))) {
+		error ("ZwQueryInformationProcess should return NT_SUCCESS");
+		free (pProcessInformation);
+		return NULL;
+	}
+
+	// Check the requested structure size with the one returned by ZwQueryInformationProcess
+	if (ReturnLength != ProcessInformationLength) {
+		error ("Warning : ZwQueryInformationProcess ReturnLength is different than ProcessInformationLength");
+	}
+
+	return pProcessInformation;
+}
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//	Description :
+// 		Retrieve the entire PEB structure of the current process
+//
+//	Parameters :
+//	Return value :
+//		PPEB :		A pointer to the PEB structure of the current process, or NULL if error
+//	Process :
+//		Calls QueryProcessInformation with a ProcessBasicInformation class to retrieve a PROCESS_BASIC_INFORMATION pointer
+//		Read the field PebAddress from PROCESS_BASIC_INFORMATION and return it as a PEB pointer.
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////
+PPEB
+GetPebProcess (
+	DWORD Pid
+) {
+	PPROCESS_BASIC_INFORMATION pProcessInformation = NULL;
+	DWORD ProcessInformationLength = sizeof (PROCESS_BASIC_INFORMATION);
+	HANDLE Process = get_handle_from_pid (Pid);
+	PPEB pPeb = NULL;
+
+	// ProcessBasicInformation returns information about the PebBaseAddress
+	if ((pProcessInformation = QueryProcessInformation (Process, ProcessBasicInformation, ProcessInformationLength)) == NULL) {
+		error ("Handle=%x : QueryProcessInformation failed.", Process);
+		return NULL;
+	}
+
+	// Check the correctness of the value returned
+	if (pProcessInformation->PebBaseAddress == NULL) {
+		error ("Handle=%x : PEB address cannot be found.", Process);
+		free (pProcessInformation);
+		return NULL;
+	}
+
+	pPeb = pProcessInformation->PebBaseAddress;
+
+	// Cleaning
+	free (pProcessInformation);
+
+	return pPeb;
+}
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//  This function is part of zer0m0n project. (https://github.com/conix-security/zer0m0n/blob/master/src/driver/module.c)
+//
+//	Description :
+//   Get the entire module information table from the target process
+//	Parameters :
+//		DWORD TargetPid : The target process ID
+//	Return value :
+//		PMODULE_INFORMATION_TABLE : A pointer to an allocated module information table
+//	Process :
+//		Wrapper around GetPebProcess, reads and store the result into a MODULE_INFORMATION_TABLE structure
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+PMODULE_INFORMATION_TABLE
+QueryModuleInformationProcess (
+	DWORD TargetPid
+) {
+	PPEB pPeb = NULL;
+	PMODULE_INFORMATION_TABLE pModuleInformationTable = NULL;
+
+	// Read the PEB from the target process
+	if ((pPeb = GetPebProcess (TargetPid)) == NULL) {
+		error ("Pid=%d : GetPebCurrentProcess failed.", TargetPid);
+		return NULL;
+	}
+
+	// Convert the PEB into a MODULE_INFORMATION_TABLE
+	if ((pModuleInformationTable = CreateModuleInformation ((ULONG) TargetPid, pPeb)) == NULL) {
+		error ("Pid=%d : CreateModuleInformation failed.", TargetPid);
+		return NULL;
+	}
+
+	return pModuleInformationTable;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//  This function is part of zer0m0n project. (https://github.com/conix-security/zer0m0n/blob/master/src/driver/module.c)
+//
+//	Description :
+//		Allocate and fill a PMODULE_INFORMATION_TABLE structure depending of the information given in the PEB
+//		It also retrieves information from the system modules and add them to the table
+//	Parameters :
+//		IN ULONG Pid The targeted process ID
+//		IN PPEB pPeb An allocated PEB pointer
+//	Return value :
+//		PMODULE_INFORMATION_TABLE An allocated PMODULE_INFORMATION_TABLE containing the information about the modules
+//	Process :
+//		Read the PEB structure
+//		Count the number of modules loaded
+//		Allocate the module information table with the correct size
+//		Fill the table with each entry of user modules
+//		Add the module information table in the global list
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+PMODULE_INFORMATION_TABLE
+CreateModuleInformation (
+	IN ULONG Pid,
+	IN PPEB pPeb
+) {
+	ULONG Count = 0;
+	ULONG CurCount = 0;
+	PLIST_ENTRY pEntry = NULL;
+	PLIST_ENTRY pHeadEntry = NULL;
+	PPEB_LDR_DATA pLdrData = NULL;
+	PMODULE_ENTRY CurModule = NULL;
+	PLDR_DATA_TABLE_ENTRY pLdrEntry = NULL;
+	PMODULE_INFORMATION_TABLE pModuleInformationTable = NULL;
+	PSYSTEM_MODULE_INFORMATION pSystemModuleInformation = NULL;
+
+	pLdrData = pPeb->LdrData;
+	pHeadEntry = &pLdrData->InMemoryOrderModuleList;
+
+	// Count user modules : iterate through the entire list
+	pEntry = pHeadEntry->Flink;
+	while (pEntry != pHeadEntry) {
+		Count++;
+		pEntry = pEntry->Flink;
+	}
+
+	// Allocate a MODULE_INFORMATION_TABLE
+	if ((pModuleInformationTable = malloc (sizeof (MODULE_INFORMATION_TABLE))) == NULL) {
+		error ("Cannot allocate a MODULE_INFORMATION_TABLE.");
+		return NULL;
+	}
+
+	// Allocate the correct amount of memory depending of the modules count
+	if ((pModuleInformationTable->Modules = malloc (Count * sizeof (MODULE_ENTRY))) == NULL) {
+		error ("Cannot allocate a MODULE_INFORMATION_TABLE.");
+		return NULL;
+	}
+
+	// Fill the basic information of MODULE_INFORMATION_TABLE
+	pModuleInformationTable->ModuleCount = Count;
+	pModuleInformationTable->ImageModule = NULL;
+	pModuleInformationTable->Pid = Pid;
+
+	// Fill all the modules information in the table
+	pEntry = pHeadEntry->Flink;
+	while (pEntry != pHeadEntry)
+	{
+		// Retrieve the current MODULE_ENTRY
+		CurModule = &pModuleInformationTable->Modules[CurCount++];
+
+		// Retrieve the current LDR_DATA_TABLE_ENTRY
+		pLdrEntry = CONTAINING_RECORD (pEntry, LDR_DATA_TABLE_ENTRY, InMemoryOrderModuleList);
+
+		// Fill the MODULE_ENTRY with the LDR_DATA_TABLE_ENTRY information
+		RtlCopyMemory (&CurModule->BaseName,    &pLdrEntry->BaseDllName, sizeof (CurModule->BaseName));
+		RtlCopyMemory (&CurModule->FullName,    &pLdrEntry->FullDllName, sizeof (CurModule->FullName));
+		RtlCopyMemory (&CurModule->SizeOfImage, &pLdrEntry->SizeOfImage, sizeof (CurModule->SizeOfImage));
+		RtlCopyMemory (&CurModule->BaseAddress, &pLdrEntry->DllBase,     sizeof (CurModule->BaseAddress));
+		RtlCopyMemory (&CurModule->EntryPoint,  &pLdrEntry->EntryPoint,  sizeof (CurModule->EntryPoint));
+		printf("Module = %S\n", CurModule->BaseName.Buffer);
+		CurModule->IsSystemModule = FALSE;
+
+		// Check if the module is not the current module of the process
+		if (CurModule->BaseAddress == pPeb->ImageBaseAddress) {
+			pModuleInformationTable->ImageModule = CurModule;
+		}
+
+		// Check if the module is the ntdll module
+		if (_wcsicmp(CurModule->BaseName.Buffer, L"ntdll.dll") == 0) {
+			pModuleInformationTable->NtdllModule = CurModule;
+		}
+
+		// Iterate to the next entry
+		pEntry = pEntry->Flink;
+	}
+
+	// Cleaning
+	free (pSystemModuleInformation);
+
+	return pModuleInformationTable;
+}
+
+
 LPVOID
 file_to_mem (char *filename)
 {
