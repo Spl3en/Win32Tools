@@ -1,5 +1,9 @@
 #include "Win32Tools.h"
 
+// ---------- Debugging -------------
+#define __DEBUG_OBJECT__ "Win32Tools"
+#include "dbg/dbg.h"
+
 static void _clean_things (HANDLE hFile, HANDLE hMapping, PBYTE pFile, const char *pErrorMessage);
 
 DWORD
@@ -26,8 +30,6 @@ get_pid_by_name (char *proc_name)
 			dwPID = pe32.th32ProcessID;
 			break;
 		}
-
-		Sleep(1);
 	}
 
 	CloseHandle(hSnapshot);
@@ -52,6 +54,42 @@ void get_error_message (DWORD code)
 	printf("> %s\n", message);
 }
 
+char *
+get_current_module_path ()
+{
+	// Get current module path
+	char path [MAX_PATH] = {0};
+	GetModuleFileName (GetModuleHandle (NULL), path, sizeof(path));
+
+	char * lastSlash = strrchr (path, '\\');
+	char * dllName = (lastSlash != NULL) ? &lastSlash[1] : path;
+	dllName [0] = '\0';
+
+	if (!strlen(path)) {
+		return NULL;
+	}
+
+	return strdup(path);
+}
+
+char *
+get_module_path (char *module)
+{
+	// Get current module path
+	char path [MAX_PATH] = {0};
+	GetModuleFileName (GetModuleHandle (module), path, sizeof(path));
+
+	char * lastSlash = strrchr (path, '\\');
+	char * dllName = (lastSlash != NULL) ? &lastSlash[1] : path;
+	dllName [0] = '\0';
+
+	if (!strlen(path)) {
+		return NULL;
+	}
+
+	return strdup(path);
+}
+
 int
 read_from_memory (HANDLE process, void *buffer, DWORD addr, unsigned int size)
 {
@@ -70,7 +108,7 @@ read_from_memory (HANDLE process, void *buffer, DWORD addr, unsigned int size)
 		{
 			res = GetLastError();
 			if (res != ERROR_PARTIAL_COPY)
-				warning("GetLastError() = %d (http://msdn.microsoft.com/en-us/library/windows/desktop/ms681382%28v=vs.85%29.aspx)", res);
+				warn ("GetLastError() = %d (http://msdn.microsoft.com/en-us/library/windows/desktop/ms681382%28v=vs.85%29.aspx)", res);
 		}
 
 		if (bytes_read != bytes_to_read)
@@ -92,7 +130,7 @@ write_to_memory (HANDLE process, void *buffer, DWORD addr, unsigned int size)
 
 	if (!WriteProcessMemory(process, (PVOID) addr, buffer, size, &bytes_read))
 	{
-		warning("WriteProcessMemory failed. (0x%.8x -> 0x%.8x)", addr, addr + size);
+		warn ("WriteProcessMemory failed. (0x%.8x -> 0x%.8x)", addr, addr + size);
 		return 0;
 	}
 
@@ -151,19 +189,19 @@ BOOL EjectDLL (char *process_name, char *dllPath)
 					if (WaitForSingleObject (HanDLLThread, INFINITE) != WAIT_FAILED)
 						return TRUE;
 					else
-						warning("WaitForSingleObject failed");
+						warn ("WaitForSingleObject failed");
 				}
 				else
-					warning("CreateRemoteThread failed : %d", GetLastError());
+					warn ("CreateRemoteThread failed : %d", GetLastError());
 			}
 			else
-				warning("OpenProcess failed : %d", GetLastError());
+				warn ("OpenProcess failed : %d", GetLastError());
         }
         else
-			warning("ModDLLHandle = %d or BytDLLBaseAdress = %d is NULL", ModDLLHandle, BytDLLBaseAdress);
+			warn ("ModDLLHandle = %d or BytDLLBaseAdress = %d is NULL", ModDLLHandle, BytDLLBaseAdress);
     }
     else
-		warning("ModKerl32 is NULL");
+		warn ("ModKerl32 is NULL");
 
     CloseHandle (hProcess);
     return FALSE;
@@ -174,7 +212,7 @@ InjectionInfo * injectDLL (char *process_name, char *dllPath)
 {
 	if (!file_exists(dllPath))
 	{
-		warning("DLL \"%s\" doesn't exist", dllPath);
+		warn ("DLL \"%s\" doesn't exist", dllPath);
 		return NULL;
 	}
 
@@ -210,27 +248,27 @@ InjectionInfo * injectDLL (char *process_name, char *dllPath)
 							}
 						}
 						else {
-							warning("CreateRemoteThread failed");
+							warn ("CreateRemoteThread failed");
 						}
 					}
 					else {
-						warning("GetProcAddress failed");
+						warn ("GetProcAddress failed");
 					}
 				}
 				else {
-					warning("LoadLibrary failed");
+					warn ("LoadLibrary failed");
 				}
 			}
 			else {
-				warning("WriteProcessMemory failed");
+				warn ("WriteProcessMemory failed");
 			}
 		}
 		else {
-			warning("VirtualAllocEx failed");
+			warn ("VirtualAllocEx failed");
 		}
 	}
 	else {
-		warning("OpenProcess failed");
+		warn ("OpenProcess failed");
 	}
 
 	return ii;
@@ -352,13 +390,13 @@ BOOL enable_debug_privileges ()
 
 	if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES, &hToken))
 	{
-		warning("Debug privilege : OpenProcessToken ERROR.");
+		warn ("Debug privilege : OpenProcessToken ERROR.");
 		return FALSE;
 	}
 
 	if (!LookupPrivilegeValue(NULL, SE_DEBUG_NAME, &newPrivs.Privileges[0].Luid))
 	{
-		warning("Debug privilege : LookupPrivilegeValue ERROR.");
+		warn ("Debug privilege : LookupPrivilegeValue ERROR.");
 		CloseHandle(hToken);
 		return FALSE;
 	}
@@ -368,7 +406,7 @@ BOOL enable_debug_privileges ()
 
 	if (!AdjustTokenPrivileges(hToken, FALSE, &newPrivs, cb, NULL, NULL))
 	{
-		warning("Debug privilege : AdjustTokenPrivileges ERROR.");
+		warn ("Debug privilege : AdjustTokenPrivileges ERROR.");
 		CloseHandle(hToken);
 		return FALSE;
 	}
@@ -401,7 +439,7 @@ HWND get_hwnd_from_pid (DWORD pid)
 }
 
 MODULEENTRY32 *
-get_module_entry (char *process_name, DWORD pid, HWND window)
+get_module_entry (char *process_name, DWORD pid)
 {
 	HANDLE snapshot = CreateToolhelp32Snapshot(8u, pid);
 	MODULEENTRY32 *me = (MODULEENTRY32 *) malloc(sizeof(MODULEENTRY32));
@@ -413,7 +451,7 @@ get_module_entry (char *process_name, DWORD pid, HWND window)
 
 	if (snapshot == INVALID_HANDLE_VALUE)
 	{
-		warning("CreateToolhelp32Snapshot failed : GetLastError() = %d", (int) GetLastError());
+		warn ("CreateToolhelp32Snapshot failed : GetLastError() = %d", (int) GetLastError());
 		return NULL;
 	}
 
@@ -427,7 +465,7 @@ get_module_entry (char *process_name, DWORD pid, HWND window)
 			{
 				if (!Module32Next(snapshot, me))
 				{
-					warning("%s module not found !", process_name);
+					warn ("%s module not found !", process_name);
 					CloseHandle(snapshot);
 					return NULL;
 				}
@@ -441,7 +479,7 @@ get_module_entry (char *process_name, DWORD pid, HWND window)
 		else
 		{
 			CloseHandle(snapshot);
-			warning("Module32First failed: GetLastError() = %d\n", (int) GetLastError());
+			warn ("Module32First failed: GetLastError() = %d\n", (int) GetLastError());
 			return NULL;
 		}
 	}
@@ -485,7 +523,7 @@ compare_pattern (const unsigned char *buffer, const unsigned char *pattern, cons
 int
 find_pattern (const unsigned char *buffer, DWORD size, unsigned char *pattern, char *mask)
 {
-	int i;
+	unsigned int i;
 
 	for (i = 0; i < size; i ++)
 	{
@@ -506,7 +544,7 @@ read_memory_as_int (HANDLE process, DWORD address)
 
 	if (!ReadProcessMemory(process, (PVOID) address, buffer, 4, &bytes_read))
 	{
-		warning("ReadProcessMemory failed. (0x%.8x)", address);
+		warn ("ReadProcessMemory failed. (0x%.8x)", address);
 		return 0;
 	}
 
@@ -523,7 +561,7 @@ write_memory_as_int (HANDLE process, DWORD address, unsigned int value)
 
 	if (!WriteProcessMemory(process, (PVOID) address, buffer, 4, &bytes_read))
 	{
-		warning("WriteProcessMemory failed. (0x%.8x)", address);
+		warn ("WriteProcessMemory failed. (0x%.8x)", address);
 		return 0;
 	}
 
@@ -538,7 +576,7 @@ read_memory_as_float (HANDLE process, DWORD address)
 
 	if (!ReadProcessMemory(process, (PVOID) address, buffer, sizeof(float), &bytes_read))
 	{
-		warning("ReadProcessMemory failed. (0x%.8x)", address);
+		warn ("ReadProcessMemory failed. (0x%.8x)", address);
 		return 0;
 	}
 
@@ -555,27 +593,24 @@ write_memory_as_float (HANDLE process, DWORD address, float value)
 
 	if (!WriteProcessMemory(process, (PVOID) address, buffer, sizeof(float), &bytes_read))
 	{
-		warning("WriteProcessMemory failed. (0x%.8x)", address);
+		warn ("WriteProcessMemory failed. (0x%.8x)", address);
 		return 0;
 	}
 
 	return 1;
 }
 
-char modify_code_memory (DWORD *address, DWORD new_value)
+bool write_protected_memory (DWORD *address, DWORD value)
 {
-	char res;
-	DWORD old_protect;
+	DWORD oldProtect;
 
-	res = VirtualProtect(address, sizeof(DWORD), PAGE_EXECUTE_READWRITE, &old_protect);
-
-	if (res != 0)
-	{
-		*address = new_value;
-		VirtualProtect(address, sizeof(DWORD), old_protect, NULL);
+	if (!VirtualProtect (address, sizeof(DWORD), PAGE_EXECUTE_READWRITE, &oldProtect)) {
+		return false;
 	}
 
-	return res;
+	*address = value;
+	VirtualProtect (address, sizeof(DWORD), oldProtect, NULL);
+	return true;
 }
 
 
@@ -597,19 +632,19 @@ get_path_from_process (HANDLE process, char *buffer)
 
 	if (_GetModuleFileNameEx == NULL)
 	{
-		warning("%d is NULL", _GetModuleFileNameEx);
+		warn ("%d is NULL", _GetModuleFileNameEx);
 	}
 
 	if (_GetModuleFileNameEx(process, NULL, buffer, MAX_PATH) == 0)
 	{
-		warning("GetModuleFileNameEx failed.");
+		warn ("GetModuleFileNameEx failed.");
 		return 0;
 	}
 
 	return 1;
 }
 
-EXPORT_FUNCTION int
+int
 bytes_to_int32 (unsigned char *bytes)
 {
 	return (((bytes[0] | (bytes[1] << 8)) | (bytes[2] << 0x10)) | (bytes[3] << 0x18));
@@ -625,7 +660,7 @@ is_win_nt (void)
 	return (osv.dwPlatformId == VER_PLATFORM_WIN32_NT);
 }
 
-EXPORT_FUNCTION float
+float
 bytes_to_float (unsigned char *bytes)
 {
 	float res;
@@ -646,54 +681,10 @@ float_to_bytes (float value, unsigned char *out)
 	memcpy(out, &value, sizeof(float));
 }
 
-void
-console_set_pos (int x, int y)
-{
-	COORD coord;
-	coord.X = x;
-	coord.Y = y;
-
-	SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), coord);
-}
-
-void
-console_stack_pos (int todo)
-{
-	static BbQueue xq = bb_queue_local_decl();
-	static BbQueue yq = bb_queue_local_decl();
-
-	CONSOLE_SCREEN_BUFFER_INFO SBInfo;
-	int x, y;
-
-	switch (todo)
-	{
-		case PUSH_POS:
-			GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &SBInfo);
-			bb_queue_add_raw(&xq, (int) SBInfo.dwCursorPosition.X);
-			bb_queue_add_raw(&yq, (int) SBInfo.dwCursorPosition.Y);
-		break;
-
-		case POP_POS:
-			x = (int) bb_queue_get_first(&xq);
-			y = (int) bb_queue_get_first(&yq);
-			console_set_pos(x, y);
-		break;
-	}
-}
-
 int
 window_is_active (HWND window)
 {
 	return (window == GetForegroundWindow());
-}
-
-void
-console_set_size (int w, int h)
-{
-	HWND console = GetConsoleWindow();
-	RECT r;
-	GetWindowRect(console, &r);
-	MoveWindow(console, r.left, r.top, w, h, TRUE);
 }
 
 void
@@ -705,75 +696,8 @@ window_get_position (HWND hWnd, int *x, int *y)
 	*y = r.top;
 }
 
-void
-console_set_col (int col)
-{
-	SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), col);
-}
 
-void
-console_set_cursor_visibility (int visible)
-{
-	CONSOLE_CURSOR_INFO cursor;
-	cursor.dwSize = 1;
-	cursor.bVisible = visible;
-	SetConsoleCursorInfo(GetStdHandle(STD_OUTPUT_HANDLE), &cursor);
-}
-
-void
-_error (char *msg, ...)
-{
-	va_list args;
-	console_set_col(0x0C);
-
-	va_start (args, msg);
-		vfprintf (stdout, msg, args);
-	va_end (args);
-
-	console_set_col(0x07);
-}
-
-void
-_warning (char *msg, ...)
-{
-	va_list args;
-	console_set_col(0x0E);
-
-	va_start (args, msg);
-		vfprintf (stdout, msg, args);
-	va_end (args);
-
-	console_set_col(0x07);
-}
-
-void
-_info (char *msg, ...)
-{
-	va_list args;
-	console_set_col(0x02);
-
-	va_start (args, msg);
-		vfprintf (stdout, msg, args);
-	va_end (args);
-
-	console_set_col(0x07);
-}
-
-void
-_debug (char *msg, ...)
-{
-	va_list args;
-	console_set_col(0x03);
-
-	va_start (args, msg);
-		vfprintf (stdout, msg, args);
-	va_end (args);
-
-	console_set_col(0x07);
-}
-
-
-
+#ifdef NTDLL_LINKED
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //	Description :
 // 		QueryProcessInformation is a wrapper around ZwQueryInformationProcess.
@@ -802,20 +726,20 @@ QueryProcessInformation (
 
 	// Allocate the memory for the requested structure
 	if ((pProcessInformation = malloc (ProcessInformationLength)) == NULL) {
-		error ("ExAllocatePoolWithTag failed");
+		fail ("ExAllocatePoolWithTag failed");
 		return NULL;
 	}
 
 	// Fill the requested structure
 	if (!NT_SUCCESS (NtQueryInformationProcess (Process, ProcessInformationClass, pProcessInformation, ProcessInformationLength, &ReturnLength))) {
-		error ("ZwQueryInformationProcess should return NT_SUCCESS");
+		fail ("ZwQueryInformationProcess should return NT_SUCCESS");
 		free (pProcessInformation);
 		return NULL;
 	}
 
 	// Check the requested structure size with the one returned by ZwQueryInformationProcess
 	if (ReturnLength != ProcessInformationLength) {
-		error ("Warning : ZwQueryInformationProcess ReturnLength is different than ProcessInformationLength");
+		fail ("Warning : ZwQueryInformationProcess ReturnLength is different than ProcessInformationLength");
 	}
 
 	return pProcessInformation;
@@ -834,23 +758,22 @@ QueryProcessInformation (
 //		Read the field PebAddress from PROCESS_BASIC_INFORMATION and return it as a PEB pointer.
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////
 PPEB
-GetPebProcess (
-	DWORD Pid
+GetCurrentPebProcess (
 ) {
 	PPROCESS_BASIC_INFORMATION pProcessInformation = NULL;
 	DWORD ProcessInformationLength = sizeof (PROCESS_BASIC_INFORMATION);
-	HANDLE Process = get_handle_from_pid (Pid);
+	HANDLE Process = GetCurrentProcess();
 	PPEB pPeb = NULL;
 
 	// ProcessBasicInformation returns information about the PebBaseAddress
 	if ((pProcessInformation = QueryProcessInformation (Process, ProcessBasicInformation, ProcessInformationLength)) == NULL) {
-		error ("Handle=%x : QueryProcessInformation failed.", Process);
+		fail ("Handle=%x : QueryProcessInformation failed.", Process);
 		return NULL;
 	}
 
 	// Check the correctness of the value returned
 	if (pProcessInformation->PebBaseAddress == NULL) {
-		error ("Handle=%x : PEB address cannot be found.", Process);
+		fail ("Handle=%x : PEB address cannot be found.", Process);
 		free (pProcessInformation);
 		return NULL;
 	}
@@ -878,20 +801,20 @@ GetPebProcess (
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 PMODULE_INFORMATION_TABLE
 QueryModuleInformationProcess (
-	DWORD TargetPid
+	void
 ) {
 	PPEB pPeb = NULL;
 	PMODULE_INFORMATION_TABLE pModuleInformationTable = NULL;
 
 	// Read the PEB from the target process
-	if ((pPeb = GetPebProcess (TargetPid)) == NULL) {
-		error ("Pid=%d : GetPebCurrentProcess failed.", TargetPid);
+	if ((pPeb = GetCurrentPebProcess ()) == NULL) {
+		fail ("Pid=%d : GetPebCurrentProcess failed.");
 		return NULL;
 	}
 
 	// Convert the PEB into a MODULE_INFORMATION_TABLE
-	if ((pModuleInformationTable = CreateModuleInformation ((ULONG) TargetPid, pPeb)) == NULL) {
-		error ("Pid=%d : CreateModuleInformation failed.", TargetPid);
+	if ((pModuleInformationTable = CreateModuleInformation (pPeb)) == NULL) {
+		fail ("Pid=%d : CreateModuleInformation failed.");
 		return NULL;
 	}
 
@@ -918,7 +841,6 @@ QueryModuleInformationProcess (
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 PMODULE_INFORMATION_TABLE
 CreateModuleInformation (
-	IN ULONG Pid,
 	IN PPEB pPeb
 ) {
 	ULONG Count = 0;
@@ -943,20 +865,19 @@ CreateModuleInformation (
 
 	// Allocate a MODULE_INFORMATION_TABLE
 	if ((pModuleInformationTable = malloc (sizeof (MODULE_INFORMATION_TABLE))) == NULL) {
-		error ("Cannot allocate a MODULE_INFORMATION_TABLE.");
+		fail ("Cannot allocate a MODULE_INFORMATION_TABLE.");
 		return NULL;
 	}
 
 	// Allocate the correct amount of memory depending of the modules count
 	if ((pModuleInformationTable->Modules = malloc (Count * sizeof (MODULE_ENTRY))) == NULL) {
-		error ("Cannot allocate a MODULE_INFORMATION_TABLE.");
+		fail ("Cannot allocate a MODULE_INFORMATION_TABLE.");
 		return NULL;
 	}
 
 	// Fill the basic information of MODULE_INFORMATION_TABLE
 	pModuleInformationTable->ModuleCount = Count;
 	pModuleInformationTable->ImageModule = NULL;
-	pModuleInformationTable->Pid = Pid;
 
 	// Fill all the modules information in the table
 	pEntry = pHeadEntry->Flink;
@@ -974,7 +895,6 @@ CreateModuleInformation (
 		RtlCopyMemory (&CurModule->SizeOfImage, &pLdrEntry->SizeOfImage, sizeof (CurModule->SizeOfImage));
 		RtlCopyMemory (&CurModule->BaseAddress, &pLdrEntry->DllBase,     sizeof (CurModule->BaseAddress));
 		RtlCopyMemory (&CurModule->EntryPoint,  &pLdrEntry->EntryPoint,  sizeof (CurModule->EntryPoint));
-		printf("Module = %S\n", CurModule->BaseName.Buffer);
 		CurModule->IsSystemModule = FALSE;
 
 		// Check if the module is not the current module of the process
@@ -996,6 +916,7 @@ CreateModuleInformation (
 
 	return pModuleInformationTable;
 }
+#endif
 
 
 LPVOID
@@ -1108,12 +1029,12 @@ find_pattern_process (HANDLE process, DWORD start, DWORD end, unsigned char *pat
 
 	if (!buffer)
 	{
-		warning("buffer malloc (size %d) failed.", size + 1);
+		warn ("buffer malloc (size %d) failed.", size + 1);
 	}
 
 	else if (ReadProcessMemory(process, (PVOID) start, buffer, size, NULL) == FALSE)
 	{
-		warning("(0x%.8x - 0x%.8x) RPM failed.", start, end);
+		warn ("(0x%.8x - 0x%.8x) RPM failed.", start, end);
 		free(buffer);
 	}
 
@@ -1225,7 +1146,7 @@ create_mask_from_file (char *filename)
 
 		if (bb_queue_get_length(line1) != bb_queue_get_length(line2))
 		{
-			warning("Pattern lines aren't the same length.");
+			warn ("Pattern lines aren't the same length.");
 			return NULL;
 		}
 
@@ -1258,7 +1179,7 @@ create_mask_from_file (char *filename)
 DWORD
 get_baseaddr (char *module_name)
 {
-	MODULEENTRY32 module_entry = {};
+	MODULEENTRY32 module_entry = {0};
 	HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, get_pid_by_name(module_name));
 
 	if (!snapshot)
@@ -1269,7 +1190,7 @@ get_baseaddr (char *module_name)
 
 	while (bModule)
 	{
-		if (!strcmp(module_entry.szModule, module_name))
+		if (!stricmp(module_entry.szModule, module_name))
 		{
 			CloseHandle(snapshot);
 			return (DWORD) module_entry.modBaseAddr;

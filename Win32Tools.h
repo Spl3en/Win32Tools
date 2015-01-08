@@ -24,9 +24,11 @@
 #include <wincon.h>
 #include <subauth.h>
 #include <ntdef.h>
+#include <sal.h>
 
-#include "../Ztring/Ztring.h"
-#include "../Utils/Utils.h"
+#include "Ztring/Ztring.h"
+#include "Utils/Utils.h"
+#include "Console/Console.h"
 
 // ---------- Defines -------------
 typedef struct InjectionInfo
@@ -250,38 +252,6 @@ typedef struct _PEB
 #define GetImgDirEntryRVA(pNTHdr, IDE) \
 	(pNTHdr->OptionalHeader.DataDirectory[IDE].VirtualAddress)
 
-#define warning(msg, ...) \
-	do {_warning("[?] (%s) " msg "\n", __FUNCTION__, ##__VA_ARGS__);} while(0)
-
-#define error(msg, ...) \
-	do {_error("[!] (%s) " msg "\n", __FUNCTION__, ##__VA_ARGS__); system("pause");} while(0)
-
-#define fatal_error(msg, ...) \
-	do {_error("[!] (%s) " msg "\n", __FUNCTION__, ##__VA_ARGS__); exit(-1);} while(0)
-
-#define important(msg, ...) \
-	do {_error("[!] " msg "\n", ##__VA_ARGS__);} while(0)
-
-#define info(msg, ...) \
-	do {_info("[+] " msg "\n", ##__VA_ARGS__);} while(0)
-
-#ifdef DEBUG_ACTIVATED
-#define debug(msg, ...) \
-	do {_debug("[+] " msg "\n", ##__VA_ARGS__);} while(0)
-#else
-#define debug(msg, ...) ;
-#endif
-
-#define debugb(msg, ...) \
-	do {_debug("[+] " msg, ##__VA_ARGS__);} while(0)
-
-#define infob(msg, ...) \
-	do {_info("[+] " msg, ##__VA_ARGS__);} while(0)
-
-#define infobn(msg, ...) \
-	do {_info(msg, ##__VA_ARGS__);} while(0)
-
-
 #ifdef BOOL
 #define bool BOOL
 #endif
@@ -360,7 +330,7 @@ DWORD
 get_baseaddr (char *module_name);
 
 MODULEENTRY32 *
-get_module_entry (char *process_name, DWORD pid, HWND window);
+get_module_entry (char *process_name, DWORD pid);
 
 void
 get_section_address (HANDLE process);
@@ -395,6 +365,9 @@ read_memory_as_float (HANDLE process, DWORD address);
 int
 write_memory_as_float (HANDLE process, DWORD address, float value);
 
+bool
+write_protected_memory (DWORD *address, DWORD value);
+
 int
 bytes_to_int32 (unsigned char *bytes);
 
@@ -409,18 +382,6 @@ float_to_bytes (float value, unsigned char *out);
 
 int
 get_path_from_process (HANDLE process, char *buffer);
-
-void
-console_set_pos (int x, int y);
-
-void
-console_set_size (int w, int h);
-
-void
-console_set_col (int col);
-
-void
-console_set_cursor_visibility (int visible);
 
 void
 window_get_position (HWND hWnd, int *x, int *y);
@@ -453,6 +414,12 @@ get_loadrec (HMODULE hModule, HRSRC hResInfo);
 
 void *
 detour_loadrec (BYTE *src, const BYTE *dst, const int len);
+
+char *
+get_current_module_path ();
+
+char *
+get_module_path (char *module);
 
 int
 screen_capture (int x, int y, int width, int height, char *filename);
@@ -491,7 +458,6 @@ get_hwnd_from_title (char *title);
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 PMODULE_INFORMATION_TABLE
 CreateModuleInformation (
-	IN ULONG Pid,
 	IN PPEB pPeb
 );
 
@@ -507,8 +473,8 @@ CreateModuleInformation (
 //		Read the field PebAddress from PROCESS_BASIC_INFORMATION and return it as a PEB pointer.
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////
 PPEB
-GetPebProcess (
-	DWORD Pid
+GetCurrentPebProcess (
+	void
 );
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -525,7 +491,7 @@ GetPebProcess (
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 PMODULE_INFORMATION_TABLE
 QueryModuleInformationProcess (
-	DWORD TargetPid
+	void
 );
 
 // --------- Destructors ----------
