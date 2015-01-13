@@ -511,10 +511,10 @@ set_privilege (HANDLE hToken, LPCTSTR lpszPrivilege, int bEnablePrivilege)
 int
 compare_pattern (const unsigned char *buffer, const unsigned char *pattern, const char *mask)
 {
-	for (;*mask;++mask, ++buffer, ++pattern)
-	{
-		if (*mask == 'x' && *buffer != *pattern)
+	for (;*mask; ++mask, ++buffer, ++pattern) {
+		if (*mask == 'x' && *buffer != *pattern) {
 			return 0;
+		}
 	}
 
 	return (*mask) == 0;
@@ -523,12 +523,8 @@ compare_pattern (const unsigned char *buffer, const unsigned char *pattern, cons
 int
 find_pattern (const unsigned char *buffer, DWORD size, unsigned char *pattern, char *mask)
 {
-	unsigned int i;
-
-	for (i = 0; i < size; i ++)
-	{
-		if (compare_pattern((buffer + i), pattern, mask))
-		{
+	for (unsigned int i = 0; i < size; i ++) {
+		if (compare_pattern (&buffer[i], pattern, mask)) {
 			return i;
 		}
 	}
