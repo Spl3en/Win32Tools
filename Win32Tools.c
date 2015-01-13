@@ -1585,6 +1585,23 @@ get_mouse_pos (int *x, int *y)
 	*y = pos.y;
 }
 
+void
+get_mouse_pos_in_window (HWND window, int *x, int *y)
+{
+	RECT clientArea;
+	GetWindowRect (window, &clientArea);
+	POINT pos = {clientArea.left, clientArea.top};
+	ScreenToClient (window, &pos);
+	clientArea.left -= pos.x;
+	clientArea.top  -= pos.y;
+
+	int mouseX, mouseY;
+	get_mouse_pos (&mouseX, &mouseY);
+
+	*x = mouseX - clientArea.left;
+	*y = mouseY - clientArea.top;
+}
+
 /* ---- IAT Hooking ---- */
 void
 hook_iat (char *function_name, LPDWORD original_function)

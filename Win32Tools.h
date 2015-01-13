@@ -338,6 +338,9 @@ get_section_address (HANDLE process);
 int
 hex_to_dec (char* hex);
 
+void
+get_mouse_pos_in_window (HWND window, int *x, int *y);
+
 int
 compare_pattern (const unsigned char *buffer, const unsigned char *pattern, const char *mask);
 
