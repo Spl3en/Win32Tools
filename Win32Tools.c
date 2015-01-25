@@ -26,7 +26,6 @@ get_pid_by_name (char *proc_name)
 	{
 		if (!stricmp(proc_name, pe32.szExeFile))
 		{
-			strcpy(proc_name, pe32.szExeFile);
 			dwPID = pe32.th32ProcessID;
 			break;
 		}
@@ -332,42 +331,6 @@ inline unsigned int align_to_boundary(unsigned int address, unsigned int boundar
 	return (((address + boundary - 1) / boundary) * boundary);
 }
 
-PIMAGE_SECTION_HEADER add_section(const char *section_name, unsigned int section_size, void *image_addr)
-{
-	PIMAGE_DOS_HEADER dos_header = (PIMAGE_DOS_HEADER)image_addr;
-
-	if (dos_header->e_magic != 0x5A4D)
-	{
-		wprintf(L"Could not retrieve DOS header from %p", image_addr);
-		return NULL;
-	}
-
-	PIMAGE_NT_HEADERS nt_headers = (PIMAGE_NT_HEADERS)((DWORD_PTR)dos_header + dos_header->e_lfanew);
-
-	if (nt_headers->OptionalHeader.Magic != 0x010B)
-	{
-		wprintf(L"Could not retrieve NT header from %p", dos_header);
-		return NULL;
-	}
-
-	const int name_max_length = 8;
-
-	PIMAGE_SECTION_HEADER last_section = IMAGE_FIRST_SECTION(nt_headers) + (nt_headers->FileHeader.NumberOfSections - 1);
-	PIMAGE_SECTION_HEADER new_section = IMAGE_FIRST_SECTION(nt_headers) + (nt_headers->FileHeader.NumberOfSections);
-	memset(new_section, 0, sizeof(IMAGE_SECTION_HEADER));
-	new_section->Characteristics = IMAGE_SCN_MEM_READ | IMAGE_SCN_MEM_EXECUTE | IMAGE_SCN_CNT_CODE;
-	memcpy(new_section->Name, section_name, name_max_length);
-	new_section->Misc.VirtualSize = section_size;
-	new_section->PointerToRawData = align_to_boundary(last_section->PointerToRawData + last_section->SizeOfRawData,
-	nt_headers->OptionalHeader.FileAlignment);
-	new_section->SizeOfRawData = align_to_boundary(section_size, nt_headers->OptionalHeader.SectionAlignment);
-	new_section->VirtualAddress = align_to_boundary(last_section->VirtualAddress + last_section->Misc.VirtualSize,
-	nt_headers->OptionalHeader.SectionAlignment);
-	nt_headers->OptionalHeader.SizeOfImage =  new_section->VirtualAddress + new_section->Misc.VirtualSize;
-	nt_headers->FileHeader.NumberOfSections++;
-
-	return new_section;
-}
 void
 error_exit (LPTSTR lpszFunction)
 {
@@ -1513,28 +1476,6 @@ is_pe (LPVOID mapping)
 	}
 
 	return 0;
-}
-
-typedef HGLOBAL ( WINAPI * tLoadRec )( HMODULE hModule, HRSRC hResInfo );
-tLoadRec oLoadRec;
-
-HGLOBAL __stdcall get_loadrec (HMODULE hModule, HRSRC hResInfo)
-{
-	__asm__("PUSHAD");
-
-	{
-		char szFileName[256] = { 0 };
-		GetModuleFileName(hModule, szFileName, sizeof(szFileName));
-
-		if (strstr (szFileName, "EHSvc"))
-		{
-			hModule = NULL;
-		}
-	}
-
-	__asm__("POPAD");
-
-	return (*oLoadRec) (hModule, hResInfo);
 }
 
 void *detour_loadrec (BYTE *src, const BYTE *dst, const int len)
